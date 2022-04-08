@@ -17,7 +17,7 @@ class RoboDesk(gym.Env):
   """Multi-task manipulation environment."""
 
   def __init__(self, task='open_slide', reward='dense', action_repeat=1,
-               episode_length=500, image_size=64):
+               episode_length=500, image_size=64, cam_ids=[-1]):
     assert reward in ('dense', 'sparse', 'success'), reward
 
     model_path = os.path.join(os.path.dirname(__file__), 'assets/desk.xml')
@@ -92,6 +92,7 @@ class RoboDesk(gym.Env):
     self.core_tasks = list(self.reward_functions)[0:12]
     self.all_tasks = list(self.reward_functions)
     self.task = task
+    self.cam_ids = cam_ids
     # pylint: enable=g-long-lambda
 
   @property
@@ -109,14 +110,16 @@ class RoboDesk(gym.Env):
         'end_effector': gym.spaces.Box(-np.inf, np.inf, (3,), np.float32),
         'qpos_objects': gym.spaces.Box(-np.inf, np.inf, (26,), np.float32),
         'qvel_objects': gym.spaces.Box(-np.inf, np.inf, (26,), np.float32)}
+    if 1 in self.cam_ids:
+        spaces['hand_image'] = gym.space.Box(0, 255, (self.image_size, self.image_size, 3), np.uint8)
     return gym.spaces.Dict(spaces)
 
-  def render(self, mode='rgb_array', resize=True):
+  def render(self, mode='rgb_array', resize=True, cam_id=-1):
     params = {'distance': 1.8, 'azimuth': 90, 'elevation': -60,
               'crop_box': (16.75, 25.0, 105.0, 88.75), 'size': 120}
     camera = mujoco.Camera(
         physics=self.physics, height=params['size'],
-        width=params['size'], camera_id=-1)
+        width=params['size'], camera_id=cam_id)
     camera._render_camera.distance = params['distance']  # pylint: disable=protected-access
     camera._render_camera.azimuth = params['azimuth']  # pylint: disable=protected-access
     camera._render_camera.elevation = params['elevation']  # pylint: disable=protected-access
@@ -378,9 +381,13 @@ class RoboDesk(gym.Env):
     return reward
 
   def _get_obs(self):
-    return {'image': self.render(resize=True),
+    obs =   {'image': self.render(resize=True),
             'qpos_robot': self.physics.data.qpos[:self.num_joints].copy(),
             'qvel_robot': self.physics.data.qvel[:self.num_joints].copy(),
             'end_effector': self.physics.named.data.site_xpos['end_effector'],
             'qpos_objects': self.physics.data.qvel[self.num_joints:].copy(),
             'qvel_objects': self.physics.data.qvel[self.num_joints:].copy()}
+    if 1 in self.cam_ids:
+        obs['hand_image'] = self.render(resize=True, cam_id=1)
+    return obs
+
